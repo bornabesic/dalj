@@ -86,7 +86,6 @@ public class StreamService extends Service {
         Log.d(StreamService.class.toString(), externalStoragePath);
 
         thread = new Thread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.Q)
             @Override
             public void run() {
                 MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
@@ -94,7 +93,7 @@ public class StreamService extends Service {
 
                 final Integer SIZE = Math.max(screenWidth, screenHeight);
                 // NOTE For some retarded reason, ImageReader requires width == height
-                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 60, HardwareBuffer.USAGE_CPU_READ_OFTEN);
+                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 60);
                 assert reader.getSurface() != null;
 
                 Log.d("StreamService", reader.getSurface().toString());
@@ -133,6 +132,8 @@ public class StreamService extends Service {
 
                     Bitmap bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
                     bitmap.copyPixelsFromBuffer(buffer);
+
+                    Log.d(StreamService.class.toString(), bitmap.getWidth() + " x " + bitmap.getHeight());
 
 /*                    if (out == null) {
                         try {
