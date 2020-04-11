@@ -25,13 +25,51 @@
             android:text="IP address of the PC"
             android:textColor="#FFFFFF" />
 
-        <EditText
-            android:id="@+id/ip"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ems="10"
-            android:inputType="textPersonName"
-            android:textColor="#FFFFFF" />
+            android:layout_height="51dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/ip0"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ems="10"
+                android:inputType="number"
+                android:text="192"
+                android:textColor="#FFFFFF" />
+
+            <EditText
+                android:id="@+id/ip1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ems="10"
+                android:inputType="number"
+                android:text="168"
+                android:textColor="#FFFFFF" />
+
+            <EditText
+                android:id="@+id/ip2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ems="10"
+                android:inputType="number"
+                android:text="178"
+                android:textColor="#FFFFFF" />
+
+            <EditText
+                android:id="@+id/ip3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ems="10"
+                android:inputType="number"
+                android:text="20"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/label_port"
@@ -50,6 +88,7 @@
             android:layout_height="wrap_content"
             android:ems="10"
             android:inputType="number"
+            android:text="10101"
             android:textColor="#FFFFFF" />
 
         <Button

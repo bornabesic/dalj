@@ -6,8 +6,8 @@ android {
 
     defaultConfig {
         applicationId "bornabesic.dalj"
-        minSdkVersion 21
-        targetSdkVersion 29
+        minSdkVersion 23
+        targetSdkVersion 28
         versionCode 1
         versionName "1.0"
 

@@ -18,8 +18,6 @@ public class MainActivity extends AppCompatActivity {
     private final int PERMISSION_CODE = 1;
     private Intent serviceIntent = null;
 
-    MediaProjectionManager manager;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -31,10 +29,9 @@ public class MainActivity extends AppCompatActivity {
         final Button startButton = findViewById(R.id.btn_start);
         final Button stopButton = findViewById(R.id.btn_stop);
 
-        manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-
         startButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
                 startActivityForResult(manager.createScreenCaptureIntent(), PERMISSION_CODE);
             }
         });
@@ -65,9 +62,13 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d(appName, Integer.valueOf(resultCode).toString());
 
-        EditText ipEdit = findViewById(R.id.ip);
+        EditText ipEdit0 = findViewById(R.id.ip0);
+        EditText ipEdit1 = findViewById(R.id.ip1);
+        EditText ipEdit2 = findViewById(R.id.ip2);
+        EditText ipEdit3 = findViewById(R.id.ip3);
+
         EditText portEdit = findViewById(R.id.port);
-        String ip = ipEdit.getText().toString();
+        String ip = ipEdit0.getText().toString() + "." + ipEdit1.getText().toString() + "." + ipEdit2.getText().toString() + "." + ipEdit3.getText().toString();
         String port = portEdit.getText().toString();
 
         Log.d(appName, "IP: " + ip);

@@ -7,27 +7,55 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.hardware.HardwareBuffer;
 import android.hardware.display.VirtualDisplay;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
+import android.os.Environment;
 import android.os.IBinder;
+import android.util.DisplayMetrics;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import androidx.core.app.NotificationCompat;
 
-import static java.lang.Thread.sleep;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 public class StreamService extends Service {
 
     private Thread thread;
     private boolean running = false;
+    private final String CHANNEL_ID = "bornabesic.dalj";
 
     @Override
     public void onCreate() {
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Log.d("StreamService", "Creating notification channel...");
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Dalj.StreamService", NotificationManager.IMPORTANCE_DEFAULT));
+            Notification notification = new Notification.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Dalj")
+                    .setContentText("Streaming...")
+                    .setChannelId(CHANNEL_ID)
+                    .build();
+            startForeground(0, notification);
+            Log.d(this.getClass().toString(), "Started in foreground.");
+        }
+        else {
+            startForeground(0, new Notification());
+            Log.d(this.getClass().toString(), "Started in foreground.");
+        }
     }
 
     @Override
@@ -37,7 +65,7 @@ public class StreamService extends Service {
         super.onDestroy();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
+
     @Override
     public int onStartCommand(final Intent intent, int flags, int startId) {
         if (running) {
@@ -45,41 +73,82 @@ public class StreamService extends Service {
             return START_NOT_STICKY;
         }
 
-        NotificationChannel channel = new NotificationChannel("10101", "Dalj.StreamService", NotificationManager.IMPORTANCE_DEFAULT);
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        notificationManager.createNotificationChannel(channel);
+        DisplayMetrics metrics = this.getResources().getDisplayMetrics();
+        final Integer screenWidth = metrics.widthPixels;
+        final Integer screenHeight = metrics.heightPixels;
+        final Integer screenDpi = metrics.densityDpi;
 
-        startForeground(10101, new NotificationCompat.Builder(this, "10101")
-                .setContentTitle("Dalj")
-                .setContentText("Streaming...")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .build()
-        );
+        final String externalStoragePath = Environment.getExternalStorageDirectory().toString();
+
+        Log.d(StreamService.class.toString(), "Width: " + screenWidth.toString());
+        Log.d(StreamService.class.toString(), "Height: " + screenHeight.toString());
+        Log.d(StreamService.class.toString(), "DPI: " + screenDpi.toString());
+        Log.d(StreamService.class.toString(), externalStoragePath);
 
         thread = new Thread(new Runnable() {
+            @RequiresApi(api = Build.VERSION_CODES.Q)
             @Override
             public void run() {
                 MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
                 MediaProjection projection = manager.getMediaProjection(Activity.RESULT_OK, intent);
 
+                final Integer SIZE = Math.max(screenWidth, screenHeight);
+                // NOTE For some retarded reason, ImageReader requires width == height
+                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 60, HardwareBuffer.USAGE_CPU_READ_OFTEN);
+                assert reader.getSurface() != null;
+
+                Log.d("StreamService", reader.getSurface().toString());
+
                 VirtualDisplay display = projection.createVirtualDisplay(
                         "Dalj",
-                        100, 800,
-                        20, 0,
-                        null, null, null
+                        screenWidth, screenHeight,
+                        screenDpi, 0,
+                        reader.getSurface(),
+                        null, null
                 );
 
                 running = true;
-                int i = 0;
+                Image image;
+                long start = -1, end = -1;
+                // FileOutputStream out = null;
                 while (running) {
-                    Log.d("StreamService", "TICK " + Integer.valueOf(i).toString());
-                    i++;
-                    try {
-                        sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
+                    start = end;
+                    image = reader.acquireLatestImage();
+                    if (image == null) continue;
+                    end = System.nanoTime();
+
+                    if (start != -1) {
+                        long nspf = end - start;
+                        double spf = nspf / 1000000000.0;
+                        double fps = 1 / spf;
+                        Log.d("StreamService", "FPS: " + Double.valueOf(fps).toString());
                     }
+
+                    Image.Plane planes[] = image.getPlanes();
+                    ByteBuffer buffer = planes[0].getBuffer();
+
+                    int pixelStride = planes[0].getPixelStride();
+                    int rowStride = planes[0].getRowStride();
+                    int rowPadding = rowStride - pixelStride * screenWidth;
+
+                    Bitmap bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
+                    bitmap.copyPixelsFromBuffer(buffer);
+
+/*                    if (out == null) {
+                        try {
+                            out = new FileOutputStream(externalStoragePath + "/debug.jpg");
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+                            out.close();
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }*/
+
+                    image.close();
                 }
+
                 stopSelf();
             }
         });
