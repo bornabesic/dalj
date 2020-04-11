@@ -30,6 +30,8 @@ import androidx.annotation.RequiresApi;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.DatagramSocket;
+import java.net.SocketException;
 import java.nio.ByteBuffer;
 
 public class StreamService extends Service {
@@ -105,6 +107,13 @@ public class StreamService extends Service {
                         reader.getSurface(),
                         null, null
                 );
+
+                DatagramSocket socket = null;
+                try {
+                    socket = new DatagramSocket();
+                } catch (SocketException e) {
+                    e.printStackTrace();
+                }
 
                 running = true;
                 Image image;
