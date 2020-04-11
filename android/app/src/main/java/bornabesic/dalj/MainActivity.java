@@ -8,6 +8,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.SeekBar;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -71,11 +72,15 @@ public class MainActivity extends AppCompatActivity {
         String ip = ipEdit0.getText().toString() + "." + ipEdit1.getText().toString() + "." + ipEdit2.getText().toString() + "." + ipEdit3.getText().toString();
         String port = portEdit.getText().toString();
 
+        SeekBar qualityBar = findViewById(R.id.quality);
+        int quality = qualityBar.getProgress() + 1; // [0, 99] -> [1, 100]
+
         serviceIntent = (Intent) data.clone();
 
         try {
             serviceIntent.putExtra("ip", ip);
             serviceIntent.putExtra("port", Integer.valueOf(port));
+            serviceIntent.putExtra("quality", quality);
         }
         catch (NumberFormatException e) {
             Toast.makeText(MainActivity.this, "Check the values!", Toast.LENGTH_SHORT).show();

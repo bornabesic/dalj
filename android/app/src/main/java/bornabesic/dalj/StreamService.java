@@ -50,6 +50,9 @@ public class StreamService extends Service {
     private boolean running = false;
     private final String CHANNEL_ID = "bornabesic.dalj";
     final int PACKET_SIZE = 24 * 1000;
+    final int SIZE_DIVISOR = 2;
+    final int DPI = 30;
+    final long FRAME_WAIT_TIME = 20; // ms
 
     @Override
     public void onCreate() {
@@ -91,19 +94,11 @@ public class StreamService extends Service {
         }
 
         DisplayMetrics metrics = this.getResources().getDisplayMetrics();
-        final Integer screenWidth = metrics.widthPixels;
-        final Integer screenHeight = metrics.heightPixels;
-        final Integer screenDpi = metrics.densityDpi;
+        final Integer screenWidth = metrics.widthPixels / SIZE_DIVISOR;
+        final Integer screenHeight = metrics.heightPixels / SIZE_DIVISOR;
+        final Integer screenDpi = Math.min(metrics.densityDpi, DPI);
 
-        // final String externalStoragePath = Environment.getExternalStorageDirectory().toString();
-
-/*        Log.d(StreamService.class.toString(), "IP: " + ip);
-        Log.d(StreamService.class.toString(), "Port:" + port);
-
-        Log.d(StreamService.class.toString(), "Width: " + screenWidth.toString());
-        Log.d(StreamService.class.toString(), "Height: " + screenHeight.toString());
         Log.d(StreamService.class.toString(), "DPI: " + screenDpi.toString());
-        Log.d(StreamService.class.toString(), externalStoragePath);*/
 
         thread = new Thread(new Runnable() {
             @Override
@@ -111,10 +106,8 @@ public class StreamService extends Service {
                 MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
                 MediaProjection projection = manager.getMediaProjection(Activity.RESULT_OK, intent);
 
-                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 60);
-                assert reader.getSurface() != null;
-
-                Log.d("StreamService", reader.getSurface().toString());
+                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 1);
+                // TODO: Handle the change of screen orientation
 
                 VirtualDisplay display = projection.createVirtualDisplay(
                         "Dalj",
@@ -126,15 +119,17 @@ public class StreamService extends Service {
 
                 String ipString = intent.getStringExtra("ip");
                 final Integer port = intent.getIntExtra("port", 10101);
+                final Integer quality = intent.getIntExtra("quality", 10);
 
                 Log.d(StreamService.class.toString(), "IP: " + ipString);
                 Log.d(StreamService.class.toString(), "Port: " + port);
+                Log.d(StreamService.class.toString(), "Quality: " + quality);
 
                 InetAddress ip = null;
                 try {
                     ip = InetAddress.getByName(ipString);
                 } catch (UnknownHostException e) {
-                    System.exit(1);
+                    e.printStackTrace();
                 }
 
 
@@ -151,40 +146,37 @@ public class StreamService extends Service {
 
                 running = true;
                 Image image;
-                long start = -1, end = -1;
                 DatagramPacket packet = null;
+
+                Bitmap bitmap = null;
                 while (running) {
                     image = reader.acquireLatestImage();
-                    if (image == null) continue;
-                    start = end;
-                    end = System.nanoTime();
+                    if (image == null) {
+                        try {
+                            Thread.sleep(FRAME_WAIT_TIME);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        continue;
+                    };
 
-                    if (start != -1) {
-                        long nspf = end - start;
-                        double spf = nspf / 1000000000.0;
-                        double fps = 1 / spf;
-                        Log.d("StreamService", "FPS: " + Double.valueOf(fps).toString());
+                    Image.Plane plane = image.getPlanes()[0];
+                    ByteBuffer buffer = plane.getBuffer();
+                    if (bitmap == null) {
+                        int pixelStride = plane.getPixelStride();
+                        int rowStride = plane.getRowStride();
+                        int rowPadding = rowStride - pixelStride * screenWidth;
+                        bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
                     }
-
-                    Image.Plane planes[] = image.getPlanes();
-                    ByteBuffer buffer = planes[0].getBuffer();
-                    int pixelStride = planes[0].getPixelStride();
-                    int rowStride = planes[0].getRowStride();
-                    int rowPadding = rowStride - pixelStride * screenWidth;
-                    Bitmap bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
                     bitmap.copyPixelsFromBuffer(buffer);
 
-                    Bitmap bitmapSmall = Bitmap.createScaledBitmap(bitmap, screenWidth / 2, screenHeight / 2, true);
-
                     baos.reset();
-                    bitmapSmall.compress(Bitmap.CompressFormat.JPEG, 10, baos);
-                    Log.d(StreamService.class.toString(), "Bytes:" + baos.bytes.length);
-                    assert baos.length == PACKET_SIZE;
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos);
+                    // Log.d(StreamService.class.toString(), "JPEG Bytes: " + baos.tell());
 
                     packet = new DatagramPacket(baos.bytes, baos.length, ip, port);
                     try {
                         socket.send(packet);
-                        Log.d(StreamService.class.toString(), "Packet sent.");
                     } catch (IOException e) {
                         e.printStackTrace();
                     }

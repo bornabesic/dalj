@@ -28,4 +28,8 @@ public class ByteArrayOutputStream2 extends OutputStream {
         Arrays.fill(bytes, (byte) 0);
     }
 
+    public int tell() {
+        return i;
+    }
+
 }
