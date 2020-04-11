@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <vector>
 
-#include <opencv2/imgcodecs.hpp>
+#include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
 using std::cout;
@@ -35,15 +35,13 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    int n_bytes = 0;
     vector<uint8_t> buffer(PACKET_SIZE);
     cv::Mat image;
     while (true) {
-        n_bytes = recv(socket_descriptor, &buffer[0], PACKET_SIZE, MSG_WAITALL);
+        recv(socket_descriptor, &buffer[0], PACKET_SIZE, MSG_WAITALL);
         image = cv::imdecode(buffer, 1);
         cv::imshow("Image", image);
-        cv::waitKey(0);
-        cout << image.cols << " " << image.rows << "\n";
+        cv::waitKey(1);
     }
 
     return EXIT_SUCCESS;
