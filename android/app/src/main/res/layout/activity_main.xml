@@ -19,7 +19,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingLeft="20px"
-            android:paddingTop="10px"
+            android:paddingTop="25px"
             android:paddingRight="0px"
             android:paddingBottom="0px"
             android:text="IP address of the PC"
@@ -28,6 +28,8 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="51dp"
+            android:layout_marginLeft="50px"
+            android:layout_marginRight="50px"
             android:orientation="horizontal">
 
             <EditText
@@ -38,6 +40,7 @@
                 android:ems="10"
                 android:inputType="number"
                 android:text="192"
+                android:textAlignment="textEnd"
                 android:textColor="#FFFFFF" />
 
             <EditText
@@ -48,6 +51,7 @@
                 android:ems="10"
                 android:inputType="number"
                 android:text="168"
+                android:textAlignment="textEnd"
                 android:textColor="#FFFFFF" />
 
             <EditText
@@ -58,6 +62,7 @@
                 android:ems="10"
                 android:inputType="number"
                 android:text="178"
+                android:textAlignment="textEnd"
                 android:textColor="#FFFFFF" />
 
             <EditText
@@ -68,6 +73,7 @@
                 android:ems="10"
                 android:inputType="number"
                 android:text="20"
+                android:textAlignment="textEnd"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 
@@ -76,7 +82,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingLeft="20px"
-            android:paddingTop="10px"
+            android:paddingTop="50px"
             android:paddingRight="0px"
             android:paddingBottom="0px"
             android:text="Port"
@@ -86,22 +92,35 @@
             android:id="@+id/port"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginLeft="50px"
+            android:layout_marginRight="50px"
             android:ems="10"
             android:inputType="number"
             android:text="10101"
+            android:textAlignment="textEnd"
             android:textColor="#FFFFFF" />
 
-        <Button
-            android:id="@+id/btn_start"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Start" />
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:paddingTop="50px">
 
-        <Button
-            android:id="@+id/btn_stop"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Stop" />
+            <Button
+                android:id="@+id/btn_start"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Start" />
+
+            <Button
+                android:id="@+id/btn_stop"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Stop" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

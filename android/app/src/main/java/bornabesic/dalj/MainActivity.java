@@ -71,16 +71,11 @@ public class MainActivity extends AppCompatActivity {
         String ip = ipEdit0.getText().toString() + "." + ipEdit1.getText().toString() + "." + ipEdit2.getText().toString() + "." + ipEdit3.getText().toString();
         String port = portEdit.getText().toString();
 
-        Log.d(appName, "IP: " + ip);
-        Log.d(appName, "Port:" + port);
-
         serviceIntent = (Intent) data.clone();
 
         try {
             serviceIntent.putExtra("ip", ip);
             serviceIntent.putExtra("port", Integer.valueOf(port));
-            serviceIntent.putExtra("data", data);
-            serviceIntent.putExtra("resultCode", resultCode);
         }
         catch (NumberFormatException e) {
             Toast.makeText(MainActivity.this, "Check the values!", Toast.LENGTH_SHORT).show();
