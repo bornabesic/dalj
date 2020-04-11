@@ -35,14 +35,12 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    uint8_t buffer[PACKET_SIZE];
     int n_bytes = 0;
-    vector<uint8_t> buffer_;
+    vector<uint8_t> buffer(PACKET_SIZE);
     cv::Mat image;
     while (true) {
-        n_bytes = recv(socket_descriptor, buffer, PACKET_SIZE, MSG_WAITALL);
-        buffer_ = vector<uint8_t>(buffer, buffer + PACKET_SIZE);
-        image = cv::imdecode(buffer_, 1);
+        n_bytes = recv(socket_descriptor, &buffer[0], PACKET_SIZE, MSG_WAITALL);
+        image = cv::imdecode(buffer, 1);
         cv::imshow("Image", image);
         cv::waitKey(0);
         cout << image.cols << " " << image.rows << "\n";
