@@ -4,8 +4,13 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <vector>
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 using std::cout;
+using std::vector;
 
 constexpr int PORT = 10101;
 constexpr int PACKET_SIZE = 24 * 1000;
@@ -32,9 +37,15 @@ int main(void) {
 
     uint8_t buffer[PACKET_SIZE];
     int n_bytes = 0;
+    vector<uint8_t> buffer_;
+    cv::Mat image;
     while (true) {
         n_bytes = recv(socket_descriptor, buffer, PACKET_SIZE, MSG_WAITALL);
-        cout << n_bytes << "\n";
+        buffer_ = vector<uint8_t>(buffer, buffer + PACKET_SIZE);
+        image = cv::imdecode(buffer_, 1);
+        cv::imshow("Image", image);
+        cv::waitKey(0);
+        cout << image.cols << " " << image.rows << "\n";
     }
 
     return EXIT_SUCCESS;
