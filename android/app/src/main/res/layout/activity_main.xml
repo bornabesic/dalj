@@ -114,9 +114,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:indeterminate="false"
-            android:max="99"
+            android:max="9"
             android:paddingTop="20px"
-            android:progress="10" />
+            android:progress="0" />
 
         <LinearLayout
             android:layout_width="match_parent"

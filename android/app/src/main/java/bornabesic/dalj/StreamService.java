@@ -8,51 +8,37 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
-import android.graphics.Rect;
-import android.hardware.HardwareBuffer;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
-import android.os.Environment;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.res.TypedArrayUtils;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 
 public class StreamService extends Service {
 
     private Thread thread;
     private boolean running = false;
     private final String CHANNEL_ID = "bornabesic.dalj";
-    final int PACKET_SIZE = 24 * 1000;
+    final int MAX_PACKET_SIZE = 62 * 1000;
     final int SIZE_DIVISOR = 2;
-    final int DPI = 30;
     final long FRAME_WAIT_TIME = 20; // ms
+    final int DPI = 30;
 
     @Override
     public void onCreate() {
@@ -132,22 +118,20 @@ public class StreamService extends Service {
                     e.printStackTrace();
                 }
 
-
                 DatagramSocket socket = null;
                 try {
                     socket = new DatagramSocket();
-                    socket.setSendBufferSize(PACKET_SIZE);
+                    socket.setSendBufferSize(MAX_PACKET_SIZE);
                     Log.d(StreamService.class.toString(), "Buffer size:" + socket.getSendBufferSize());
                 } catch (SocketException e) {
                     e.printStackTrace();
                 }
 
-                ByteArrayOutputStream2 baos = new ByteArrayOutputStream2(PACKET_SIZE);
+                ByteArrayOutputStream2 baos = new ByteArrayOutputStream2(MAX_PACKET_SIZE);
 
                 running = true;
-                Image image;
+                Image image = null;
                 DatagramPacket packet = null;
-
                 Bitmap bitmap = null;
                 while (running) {
                     image = reader.acquireLatestImage();
@@ -166,15 +150,17 @@ public class StreamService extends Service {
                         int pixelStride = plane.getPixelStride();
                         int rowStride = plane.getRowStride();
                         int rowPadding = rowStride - pixelStride * screenWidth;
+                        Log.d(StreamService.class.toString(), pixelStride + ", " + rowStride + ", " + rowPadding);
                         bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
+                        bitmap.setHasAlpha(false);
                     }
                     bitmap.copyPixelsFromBuffer(buffer);
 
                     baos.reset();
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos);
-                    // Log.d(StreamService.class.toString(), "JPEG Bytes: " + baos.tell());
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos); // This causes artefacts if baos is not large enough
 
-                    packet = new DatagramPacket(baos.bytes, baos.length, ip, port);
+                    // Log.d(StreamService.class.toString(), "Bytes: " + baos.tell());
+                    packet = new DatagramPacket(baos.bytes, baos.tell(), ip, port);
                     try {
                         socket.send(packet);
                     } catch (IOException e) {

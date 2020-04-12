@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
         String port = portEdit.getText().toString();
 
         SeekBar qualityBar = findViewById(R.id.quality);
-        int quality = qualityBar.getProgress() + 1; // [0, 99] -> [1, 100]
+        int quality = (qualityBar.getProgress() + 1) * 10; // [0, 9] -> [1, 100]
 
         serviceIntent = (Intent) data.clone();
 
