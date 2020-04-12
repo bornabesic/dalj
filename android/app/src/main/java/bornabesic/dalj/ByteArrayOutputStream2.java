@@ -25,7 +25,7 @@ public class ByteArrayOutputStream2 extends OutputStream {
 
     public void reset() {
         i = 0;
-        Arrays.fill(bytes, (byte) 0);
+        // Arrays.fill(bytes, (byte) 0);
     }
 
     public int tell() {
