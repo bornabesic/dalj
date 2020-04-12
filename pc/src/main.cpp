@@ -18,8 +18,21 @@ constexpr int MAX_PACKET_SIZE = 62 * 1000;
 
 void sigint_handler(int signum) { exit(EXIT_SUCCESS); }
 
+int get_recv_buffer_size(int socket_descriptor) {
+    int size;
+    unsigned int int_size = sizeof(size);
+    getsockopt(socket_descriptor, SOL_SOCKET, SO_RCVBUF, (void *)&size,
+               &int_size);
+    return size;
+}
+
+int set_recv_buffer_size(int socket_descriptor, int size) {
+    return setsockopt(socket_descriptor, SOL_SOCKET, SO_RCVBUF, &size,
+                      sizeof(int));
+}
+
 int main(void) {
-    int socket_descriptor = socket(AF_INET, SOCK_DGRAM, 0);
+    int socket_descriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_descriptor == -1) {
         cout << "Cannot create socket!"
              << "\n";
@@ -37,6 +50,11 @@ int main(void) {
              << "\n";
         return EXIT_FAILURE;
     }
+
+    set_recv_buffer_size(socket_descriptor, MAX_PACKET_SIZE * 60);
+    cout << "Receive buffer size: " << get_recv_buffer_size(socket_descriptor)
+         << " bytes"
+         << "\n";
 
     signal(SIGINT, sigint_handler);
 
