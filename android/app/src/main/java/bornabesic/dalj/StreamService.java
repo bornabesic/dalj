@@ -15,11 +15,15 @@ import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.util.Pair;
 import android.view.Surface;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
@@ -28,14 +32,18 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import static java.net.StandardSocketOptions.SO_SNDBUF;
 
 public class StreamService extends Service {
 
-    private Thread thread;
+    private Thread encoderThread;
+    private Thread datagramThread;
     private boolean running = false;
     private final String CHANNEL_ID = "bornabesic.dalj";
     final int MAX_PACKET_SIZE = 62 * 1000;
@@ -53,6 +61,9 @@ public class StreamService extends Service {
     MediaProjection projection = null;
     VirtualDisplay display = null;
     Intent intent = null;
+    MediaCodec encoder = null;
+
+    BlockingQueue<Pair<ByteBuffer, Integer>> frameBuffers = new ArrayBlockingQueue<Pair<ByteBuffer, Integer>>(FPS_LIMIT);
 
     @Override
     public void onCreate() {
@@ -114,8 +125,61 @@ public class StreamService extends Service {
 
         this.intent = intent;
 
+        datagramThread = new Thread(new Runnable() {
+
+            public void send() throws IOException {
+                String ipString = intent.getStringExtra("ip");
+                final Integer port = intent.getIntExtra("port", 10101);
+                final Integer quality = intent.getIntExtra("quality", 10);
+
+                Log.d(StreamService.class.toString(), "IP: " + ipString);
+                Log.d(StreamService.class.toString(), "Port: " + port);
+                Log.d(StreamService.class.toString(), "Quality: " + quality);
+
+                InetAddress ip = InetAddress.getByName(ipString);
+
+                DatagramChannel datagramChannel = null;
+                InetSocketAddress inetSocketAddress = null;
+
+                datagramChannel = DatagramChannel.open();
+                inetSocketAddress = new InetSocketAddress(ip, port);
+                datagramChannel.setOption(SO_SNDBUF, MAX_PACKET_SIZE);
+                Log.d(StreamService.class.toString(), "Buffer size:" + datagramChannel.getOption(SO_SNDBUF));
+
+                running = true;
+                while (running) {
+                    try {
+                        Pair<ByteBuffer, Integer> p = frameBuffers.take();
+                        ByteBuffer buffer = p.first;
+                        int bufferIndex = p.second;
+
+                        datagramChannel.send(buffer, inetSocketAddress);
+
+                        encoder.releaseOutputBuffer(bufferIndex, false);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                stopSelf();
+            }
+            @Override
+            public void run() {
+                try {
+                    send();
+                } catch (final Exception e) {
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    e.printStackTrace(pw);
+                    String stackTrace = sw.toString();
+                    MainActivity.showDialog("Exception", stackTrace);
+                }
+                stopSelf();
+            }
+
+        });
+
         // final Display display = ((WindowManager) StreamService.this.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
-        thread = new Thread(new Runnable() {
+        encoderThread = new Thread(new Runnable() {
 
             private void stream() throws IOException {
                 DisplayMetrics metrics = StreamService.this.getResources().getDisplayMetrics();
@@ -165,7 +229,7 @@ public class StreamService extends Service {
                 MediaCodecInfo encoderInfo = findEncoder(MIME_TYPE);
                 Log.d(StreamService.class.toString(), encoderInfo.getName());
 
-                MediaCodec encoder = null;
+
                 encoder = MediaCodec.createByCodecName(encoderInfo.getName());
                 encoder.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
 
@@ -179,51 +243,28 @@ public class StreamService extends Service {
                         null, null
                 );
 
-                encoder.start();
+                Looper.prepare();
 
-                String ipString = intent.getStringExtra("ip");
-                final Integer port = intent.getIntExtra("port", 10101);
-                final Integer quality = intent.getIntExtra("quality", 10);
+                encoder.setCallback(new MediaCodec.Callback() {
+                    @Override
+                    public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {}
 
-                Log.d(StreamService.class.toString(), "IP: " + ipString);
-                Log.d(StreamService.class.toString(), "Port: " + port);
-                Log.d(StreamService.class.toString(), "Quality: " + quality);
-
-                InetAddress ip = InetAddress.getByName(ipString);
-
-                DatagramChannel datagramChannel = null;
-                InetSocketAddress inetSocketAddress = null;
-
-                datagramChannel = DatagramChannel.open();
-                inetSocketAddress = new InetSocketAddress(ip, port);
-                datagramChannel.setOption(SO_SNDBUF, MAX_PACKET_SIZE);
-                Log.d(StreamService.class.toString(), "Buffer size:" + datagramChannel.getOption(SO_SNDBUF));
-
-
-                final int TIMEOUT_USEC = USPF / 2;
-                running = true;
-                MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-                while (running) {
-                    int encoderStatus = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
-                    switch (encoderStatus) {
-                        case  MediaCodec.INFO_TRY_AGAIN_LATER:
-                            continue;
-                        case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                            Log.d(StreamService.class.toString(), encoder.getOutputFormat().toString());
-                            //stopSelf();
-                           continue;
+                    @Override
+                    public void onOutputBufferAvailable(@NonNull MediaCodec codec, int index, @NonNull MediaCodec.BufferInfo info) {
+                        ByteBuffer buffer = encoder.getOutputBuffer(index);
+                        frameBuffers.add(new Pair<>(buffer, index));
                     }
 
-                    ByteBuffer encodedData = encoder.getOutputBuffer(encoderStatus);
+                    @Override
+                    public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {}
 
-                    // encodedData.position(info.offset);
-                    // encodedData.limit(info.offset + info.size);
+                    @Override
+                    public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {}
+                }, new Handler(Looper.myLooper()));
 
-                    datagramChannel.send(encodedData, inetSocketAddress);
-                    encoder.releaseOutputBuffer(encoderStatus, false);
-                }
-
-                stopSelf();
+                encoder.start();
+                Log.d(StreamService.class.toString(), "Encoder started.");
+                Looper.loop();
             }
 
             @Override
@@ -237,11 +278,11 @@ public class StreamService extends Service {
                     String stackTrace = sw.toString();
                     MainActivity.showDialog("Exception", stackTrace);
                 }
-                stopSelf();
             }
         });
 
-        thread.start();
+        datagramThread.start();
+        encoderThread.start();
 
         return START_NOT_STICKY;
     }
