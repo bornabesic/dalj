@@ -1,9 +1,13 @@
 package bornabesic.dalj;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -11,7 +15,9 @@ import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDialog;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -19,9 +25,26 @@ public class MainActivity extends AppCompatActivity {
     private final int PERMISSION_CODE = 1;
     private Intent serviceIntent = null;
 
+    static MainActivity instance;
+
+    static protected void showDialog(final String title, final String message) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                new AlertDialog.Builder(instance)
+                        .setTitle(title)
+                        .setMessage(message)
+                        .setPositiveButton("Ok", null)
+                        .create().show();
+            }
+        });
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instance = this;
         Log.d(appName, "onCreate()");
 
         appName = getString(R.string.app_name);

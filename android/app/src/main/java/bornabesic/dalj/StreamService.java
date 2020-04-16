@@ -7,28 +7,31 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.PixelFormat;
 import android.hardware.display.VirtualDisplay;
-import android.media.Image;
-import android.media.ImageReader;
+import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
+import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Surface;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
+
+import static java.net.StandardSocketOptions.SO_SNDBUF;
 
 public class StreamService extends Service {
 
@@ -37,8 +40,19 @@ public class StreamService extends Service {
     private final String CHANNEL_ID = "bornabesic.dalj";
     final int MAX_PACKET_SIZE = 62 * 1000;
     final int SIZE_DIVISOR = 2;
-    final long FRAME_WAIT_TIME = 20; // ms
     final int DPI = 30;
+    final int FPS_LIMIT = 60;
+    final int USPF = 1000000 / FPS_LIMIT;
+    final String MIME_TYPE = "video/avc";
+
+    Integer screenWidth = null;
+    Integer screenHeight = null;
+    Integer screenDpi = null;
+
+    MediaProjectionManager manager = null;
+    MediaProjection projection = null;
+    VirtualDisplay display = null;
+    Intent intent = null;
 
     @Override
     public void onCreate() {
@@ -71,6 +85,25 @@ public class StreamService extends Service {
         super.onDestroy();
     }
 
+    private static MediaCodecInfo findEncoder(String mimeType) {
+        String found = "";
+        MediaCodecInfo codecInfoFound = null;
+        MediaCodecList codecList = new MediaCodecList(MediaCodecList.ALL_CODECS);
+        for (MediaCodecInfo codecInfo : codecList.getCodecInfos()) {
+            if (!codecInfo.isEncoder()) {
+                continue;
+            }
+            String[] types = codecInfo.getSupportedTypes();
+            for (int j = 0; j < types.length; j++) {
+                if (types[j].equalsIgnoreCase(mimeType)) {
+                    codecInfoFound = codecInfo;
+                    found += "\n" + codecInfoFound.getName();
+                }
+            }
+        }
+        MainActivity.showDialog("Codecs", found);
+        return codecInfoFound;
+    }
 
     @Override
     public int onStartCommand(final Intent intent, int flags, int startId) {
@@ -79,29 +112,74 @@ public class StreamService extends Service {
             return START_NOT_STICKY;
         }
 
-        DisplayMetrics metrics = this.getResources().getDisplayMetrics();
-        final Integer screenWidth = metrics.widthPixels / SIZE_DIVISOR;
-        final Integer screenHeight = metrics.heightPixels / SIZE_DIVISOR;
-        final Integer screenDpi = Math.min(metrics.densityDpi, DPI);
+        this.intent = intent;
 
-        Log.d(StreamService.class.toString(), "DPI: " + screenDpi.toString());
-
+        // final Display display = ((WindowManager) StreamService.this.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                MediaProjectionManager manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-                MediaProjection projection = manager.getMediaProjection(Activity.RESULT_OK, intent);
 
-                ImageReader reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 1);
-                // TODO: Handle the change of screen orientation
+            private void stream() throws IOException {
+                DisplayMetrics metrics = StreamService.this.getResources().getDisplayMetrics();
+                screenWidth = metrics.widthPixels;
+                screenHeight = metrics.heightPixels;
+                screenDpi = metrics.densityDpi;
 
-                VirtualDisplay display = projection.createVirtualDisplay(
+                screenWidth /= SIZE_DIVISOR;
+                screenHeight /= SIZE_DIVISOR;
+
+                while (screenWidth % 2 != 0) screenWidth++;
+                while (screenHeight % 2 != 0) screenHeight++;
+
+                MainActivity.showDialog("Resolution", screenWidth + " x " + screenHeight);
+
+                Log.d(StreamService.class.toString(), screenWidth + " x " + screenHeight + " @ " + screenDpi);
+
+                manager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                projection = manager.getMediaProjection(Activity.RESULT_OK, intent);
+
+                MediaFormat mediaFormat = MediaFormat.createVideoFormat(MIME_TYPE, screenWidth, screenHeight);
+                mediaFormat.setInteger(MediaFormat.KEY_BIT_RATE, 1000);
+                mediaFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+                mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FPS_LIMIT);
+                mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, -1);
+
+                /*
+                https://developer.samsung.com/forum/thread/exynos-avc-decoder-fails-to-decode-h264-on-s8-and-newer-devices/201/361542?boardName=SDK&startId=zzzzz~
+                 */
+                mediaFormat.setInteger(MediaFormat.KEY_CAPTURE_RATE, FPS_LIMIT);
+                mediaFormat.setInteger(MediaFormat.KEY_OPERATING_RATE, FPS_LIMIT);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    mediaFormat.setInteger(MediaFormat.KEY_MAX_FPS_TO_ENCODER, FPS_LIMIT);
+                }
+                mediaFormat.setInteger(MediaFormat.KEY_PRIORITY, 0); // Real-time
+                mediaFormat.setInteger(MediaFormat.KEY_COMPLEXITY, 0);
+
+
+                mediaFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 0);
+
+                mediaFormat.setInteger(MediaFormat.KEY_HEIGHT, screenHeight);
+                mediaFormat.setInteger(MediaFormat.KEY_WIDTH, screenWidth);
+
+                // Log.d(StreamService.class.toString(), "Tile height: " + mediaFormat.getInteger(MediaFormat.KEY_TILE_HEIGHT));
+
+
+                MediaCodecInfo encoderInfo = findEncoder(MIME_TYPE);
+                Log.d(StreamService.class.toString(), encoderInfo.getName());
+
+                MediaCodec encoder = null;
+                encoder = MediaCodec.createByCodecName(encoderInfo.getName());
+                encoder.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+
+                Surface surface = encoder.createInputSurface();
+
+                display = projection.createVirtualDisplay(
                         "Dalj",
                         screenWidth, screenHeight,
-                        screenDpi, 0,
-                        reader.getSurface(),
+                        DPI, 0,
+                        surface,
                         null, null
                 );
+
+                encoder.start();
 
                 String ipString = intent.getStringExtra("ip");
                 final Integer port = intent.getIntExtra("port", 10101);
@@ -111,68 +189,58 @@ public class StreamService extends Service {
                 Log.d(StreamService.class.toString(), "Port: " + port);
                 Log.d(StreamService.class.toString(), "Quality: " + quality);
 
-                InetAddress ip = null;
-                try {
-                    ip = InetAddress.getByName(ipString);
-                } catch (UnknownHostException e) {
-                    e.printStackTrace();
-                }
+                InetAddress ip = InetAddress.getByName(ipString);
 
-                DatagramSocket socket = null;
-                try {
-                    socket = new DatagramSocket();
-                    socket.setSendBufferSize(MAX_PACKET_SIZE);
-                    Log.d(StreamService.class.toString(), "Buffer size:" + socket.getSendBufferSize());
-                } catch (SocketException e) {
-                    e.printStackTrace();
-                }
+                DatagramChannel datagramChannel = null;
+                InetSocketAddress inetSocketAddress = null;
 
-                ByteArrayOutputStream2 baos = new ByteArrayOutputStream2(MAX_PACKET_SIZE);
+                datagramChannel = DatagramChannel.open();
+                inetSocketAddress = new InetSocketAddress(ip, port);
+                datagramChannel.setOption(SO_SNDBUF, MAX_PACKET_SIZE);
+                Log.d(StreamService.class.toString(), "Buffer size:" + datagramChannel.getOption(SO_SNDBUF));
 
+
+                final int TIMEOUT_USEC = USPF / 2;
                 running = true;
-                Image image = null;
-                DatagramPacket packet = null;
-                Bitmap bitmap = null;
+                MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
                 while (running) {
-                    image = reader.acquireLatestImage();
-                    if (image == null) {
-                        try {
-                            Thread.sleep(FRAME_WAIT_TIME);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                        continue;
-                    };
-
-                    Image.Plane plane = image.getPlanes()[0];
-                    ByteBuffer buffer = plane.getBuffer();
-                    if (bitmap == null) {
-                        int pixelStride = plane.getPixelStride();
-                        int rowStride = plane.getRowStride();
-                        int rowPadding = rowStride - pixelStride * screenWidth;
-                        Log.d(StreamService.class.toString(), pixelStride + ", " + rowStride + ", " + rowPadding);
-                        bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888);
-                        bitmap.setHasAlpha(false);
-                    }
-                    bitmap.copyPixelsFromBuffer(buffer);
-
-                    baos.reset();
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos); // This causes artefacts if baos is not large enough
-
-                    // Log.d(StreamService.class.toString(), "Bytes: " + baos.tell());
-                    packet = new DatagramPacket(baos.bytes, baos.tell(), ip, port);
-                    try {
-                        socket.send(packet);
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                    int encoderStatus = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
+                    switch (encoderStatus) {
+                        case  MediaCodec.INFO_TRY_AGAIN_LATER:
+                            continue;
+                        case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                            Log.d(StreamService.class.toString(), encoder.getOutputFormat().toString());
+                            //stopSelf();
+                           continue;
                     }
 
-                    image.close();
+                    ByteBuffer encodedData = encoder.getOutputBuffer(encoderStatus);
+
+                    // encodedData.position(info.offset);
+                    // encodedData.limit(info.offset + info.size);
+
+                    datagramChannel.send(encodedData, inetSocketAddress);
+                    encoder.releaseOutputBuffer(encoderStatus, false);
                 }
 
                 stopSelf();
             }
+
+            @Override
+            public void run() {
+                try {
+                    stream();
+                } catch (final Exception e) {
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    e.printStackTrace(pw);
+                    String stackTrace = sw.toString();
+                    MainActivity.showDialog("Exception", stackTrace);
+                }
+                stopSelf();
+            }
         });
+
         thread.start();
 
         return START_NOT_STICKY;

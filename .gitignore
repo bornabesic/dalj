@@ -1,0 +1,5 @@
+
+.vscode/
+android/app/release/
+android/app/.*
+android/.*
